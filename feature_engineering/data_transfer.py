@@ -42,3 +42,17 @@ from sklearn.preprocessing import MaxAbsScaler
 
 mas = MaxAbsScaler()
 x_maxabs_scaler = mas.fit_transform(df.iloc[:, :4])
+
+
+# 3.z-score 标准差标准化
+# 自己手写理论公式来实现功能
+# 标准化之后均值为 0，标准差为 1
+def z_score(df):
+    N, x_z = df.shape[0], []
+    for item in df.columns.tolist()[:4]:
+        mean = np.sum(df[item])/N
+        std = np.sqrt(np.sum((df[item]-mean)**2)/N)
+        Z = (df[item] - mean)/std
+        x_z.append(Z)
+    return np.array(np.matrix(x_z).T)[:5]
+z_score(df)
