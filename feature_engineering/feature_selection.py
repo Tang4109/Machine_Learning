@@ -84,7 +84,7 @@ def corr_selector(df):
 
 
 corr_selector(df)
-df.plot()
+# df.plot()
 plt.savefig('corr.png')
 # plt.show()
 
@@ -165,11 +165,12 @@ def MI_and_NMI():
 
 
 MI, NMI, normalized_mutual_info_score = MI_and_NMI()
-print('互信息,标准互信息及其得分',MI, NMI, normalized_mutual_info_score)
+print('互信息,标准互信息及其得分', MI, NMI, normalized_mutual_info_score)
 
 # 调用 sklearn 模块 API 接口
 from sklearn.feature_selection import SelectKBest
 from minepy import MINE
+
 
 # 由于MINE的设计不是函数式的，定义mic方法将其为函数式的，
 # 返回一个二元组，二元组的第2项设置成固定的P值0.5
@@ -178,12 +179,153 @@ def mic(x, y):
     m.compute_score(x, y)
     return (m.mic(), 0.5)
 
+
 # fun = lambda X, Y: list(map(lambda x:mic(x, Y), X.T))
 fun = lambda X, Y: tuple(array(list(map(lambda x: mic(x.tolist(), Y.tolist()), X.T))).T)
 
 # 选择K个最好的特征，返回特征选择后的数据
-skb_ =  SelectKBest(fun, k=2)
-x_skb_ = skb_.fit_transform(df.iloc[:,:4], df.iloc[:,4])
+skb_ = SelectKBest(fun, k=2)
+x_skb_ = skb_.fit_transform(df.iloc[:, :4], df.iloc[:, 4])
 print('>>>检验统计值(互信息)：\n', skb_.scores_)
 print('\n>>>P值：\n', skb_.pvalues_)
 x_skb_[:5]
+
+# # Wrapper 包装法
+# 稳定性选择(Stability Selection)
+# from sklearn.linear_model import RandomizedLasso, LinearRegression
+# from sklearn.linear_model import RandomizedLogisticRegression, LogisticRegression
+# import warnings
+#
+# warnings.filterwarnings('ignore')
+#
+# X = df.iloc[:, :4]
+# Y = df.iloc[:, 4]
+# names = X.columns.tolist()
+# print(names)
+#
+# # -------------------------------------
+# # 回归
+# rlasso = RandomizedLasso(alpha=0.025)
+# rlasso.fit(X, Y)
+#
+# # -------------------------------------
+# # 分类
+# rlogistic = RandomizedLogisticRegression()
+# rlogistic.fit(X, Y)
+#
+# print("\n>>>回归 Features sorted by their score:")
+# print(rlasso.scores_)
+# print(sorted(zip(map(lambda x: format(x, '.4f'), rlasso.scores_), names), reverse=True))
+#
+# print("\n>>>分类 Features sorted by their score:")
+# print(rlogistic.scores_)
+# print(sorted(zip(map(lambda x: format(x, '.4f'), rlogistic.scores_), names), reverse=True))
+#
+# lr = LinearRegression()
+# lr.fit(X, Y)
+# lr.coef_, lr.intercept_
+
+# 递归特征消除
+from sklearn.feature_selection import RFE
+from sklearn.linear_model import LinearRegression
+from sklearn.datasets import load_boston
+
+boston = load_boston()
+X = boston["data"]
+Y = boston["target"]
+names = boston["feature_names"]
+
+# use linear regression as the model
+lr = LinearRegression()
+# rank all features, i.e continue the elimination until the last one
+rfe = RFE(lr, n_features_to_select=2)
+rfe.fit(X, Y)
+
+print("Features sorted by their rank:")
+print(sorted(zip(rfe.ranking_, names)))
+
+# Embedded 嵌入法
+# 线性模型
+from sklearn.linear_model import LinearRegression
+
+X = df.iloc[:, :4]
+Y = df.iloc[:, 4]
+lr = LinearRegression()
+lr.fit(X, Y)
+print(X.columns.tolist())
+print(lr.coef_)
+
+# 正则化
+# L1范数
+from sklearn.linear_model import Lasso
+
+X = df.iloc[:, :4]
+Y = df.iloc[:, 4]
+lasso = Lasso(alpha=0.3)
+lasso.fit(X, Y)
+print(X.columns.tolist())
+print(lasso.coef_)
+
+# L2范数
+from sklearn.linear_model import Ridge
+
+X = df.iloc[:, :4]
+Y = df.iloc[:, 4]
+ridge = Ridge(alpha=0.3)
+ridge.fit(X, Y)
+print(X.columns.tolist())
+print(ridge.coef_)
+
+# 树模型-待定
+
+# 类别标签不平衡处理
+# 欠采样：easyEnsemble
+# 过采样：Synthetic Minority Over-Sampling Technique :SMOTE
+# 加权处理
+
+# 数据降维
+def pca(df, k):
+    X = np.mat(df.iloc[:, :-1])
+    # 1 中心化
+    X_mean = X - np.mean(X, axis=0)
+    # 2 求协方差
+    cov = np.cov(X_mean.T)
+    # 3 求特征值和特征向量
+    w, v = np.linalg.eig(cov)
+    # 4 对特征值排序并提取前k个主成分所对应的特征向量
+    w_ = np.argsort(w)[::-1]
+    v_ = v[:, w_[:k]]
+    # 5 将原数据映射相乘到新的特征向量中
+    newF = X_mean * v_
+    return newF, w, v
+
+
+newF, w, v = pca(df, k=3)
+
+
+def best_k(w):
+    wSum = np.sum(w)
+    comsum_rate, goal_rate, count = 0, 0.98, 0
+    for k in range(len(w)):
+        CR = w[k] / wSum  # 计算贡献率
+        print(CR)
+        comsum_rate += CR  # 计算累加贡献率
+        count += 1
+        if comsum_rate >= goal_rate:
+            print('Best k .... 累加贡献率为：', comsum_rate, end='')
+            return count
+
+
+best_k(w)
+
+# 贡献率累加曲线
+def CRplot(w):
+    wSum = np.sum(w)
+    comsum_rate, L = 0, []
+    for k in range(len(w)):
+        CR = w[k]/wSum  # 计算贡献率
+        comsum_rate += CR  # 计算累加贡献率
+        L.append(comsum_rate)
+    plt.plot(range(1,5,1), L)
+    # plt.show()
+CRplot(w)
